@@ -25,10 +25,10 @@ init_push_script() {
   init_environment "${INFRA_ENV_FILE}"
 
   # Check if pushing is needed for this environment
-  if [[ "${INFRA_ENV}" == "dev" ]]; then
-    log_info "Environment is 'dev' - skipping image push"
-    exit 0
-  fi
+  # if [[ "${INFRA_ENV}" == "dev" ]]; then
+  #   log_info "Environment is 'dev' - skipping image push"
+  #   exit 0
+  # fi
 
   # Validate required environment variables
   validate_push_environment
@@ -201,12 +201,12 @@ push_all_images() {
 
   for stack in "${STACKS[@]}"; do
     if push_stack_images "${stack}" "${step_number}"; then
-      ((total_successful++))
+      total_successful=$((total_successful + 1))
     else
-      ((total_failed++))
+      total_failed=$((total_failed + 1))
       failed_stacks+=("${stack}")
     fi
-    ((step_number++))
+    step_number=$((step_number + 1))
     echo
   done
 

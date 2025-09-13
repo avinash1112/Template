@@ -193,12 +193,12 @@ build_docker_image() {
 
     for stack in "${STACKS[@]}"; do
       if build_stack_images "${stack}" "${step_number}"; then
-        ((total_successful++))
-        else
-        ((total_failed++))
+        total_successful=$((total_successful + 1))
+      else
+        total_failed=$((total_failed + 1))
         failed_stacks+=("${stack}")
       fi
-      ((step_number++))
+      step_number=$((step_number + 1))
       echo
     done
 
