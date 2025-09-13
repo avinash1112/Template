@@ -1,0 +1,329 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+# Get script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
+# Load core modules and utilities
+source "${SCRIPT_DIR}/../lib/bootstrap.sh"
+source "${SCRIPT_DIR}/../core/environment.sh"
+source "${SCRIPT_DIR}/../core/templates.sh"
+source "${SCRIPT_DIR}/../core/certificates.sh"
+
+# Import service-specific modules
+source "${SCRIPT_DIR}/../services/mysql.sh"
+source "${SCRIPT_DIR}/../services/redis.sh"
+source "${SCRIPT_DIR}/../services/php.sh"
+source "${SCRIPT_DIR}/../services/nginx.sh"
+source "${SCRIPT_DIR}/../services/nodejs.sh"
+
+# Script configuration
+readonly SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+# Note: INFRA_DIR, TEMPLATES_DIR, RENDERED_DIR, CERTS_DIR, ENV_FILE
+# are already defined as readonly in bootstrap.sh
+
+# Initialize the script
+init_render_script() {
+
+  # Initialize logging
+  init_logging "INFO" "auto"
+
+  # Initialize environment
+  init_environment "${INFRA_ENV_FILE}"
+
+  # Validate required directories
+  ensure_directory_exists "${TEMPLATES_DIR}" "templates directory"
+  ensure_directory_exists "${RENDERED_DIR}"
+  ensure_directory_exists "${CERTS_DIR}"
+
+  log_success "Render script initialized successfully"
+}
+
+# Step 1: Clean and prepare rendered directory
+prepare_rendered_directory() {
+  log_step 1 "Preparing rendered directory"
+
+  init_template_system "${TEMPLATES_DIR}" "${RENDERED_DIR}" true
+
+  log_success "Rendered directory prepared"
+}
+
+# Step 2: Adjust Dockerfile dependencies
+adjust_dockerfile_dependencies() {
+  log_step 2 "Adjusting Dockerfile dependencies for missing files"
+
+  # Check frontend dependencies (Node.js)
+  local frontend_dockerfile="${RENDERED_DIR}/docker-images/frontend/nodejs/nodejs.dockerfile.tpl"
+  if [[ -f "${frontend_dockerfile}" ]]; then
+    adjust_nodejs_dockerfile_deps "${frontend_dockerfile}"
+  fi
+
+  # Check backend dependencies (PHP/Composer)
+  local backend_dockerfile="${RENDERED_DIR}/docker-images/backend/php/php.dockerfile.tpl"
+  if [[ -f "${backend_dockerfile}" ]]; then
+    adjust_php_dockerfile_deps "${backend_dockerfile}"
+  fi
+
+  log_success "Dockerfile dependencies adjusted"
+}
+
+# Step 3: Inject replica configurations
+inject_replica_configurations() {
+  log_step 3 "Injecting replica configurations into Docker Compose files"
+
+  local frontend_compose="${RENDERED_DIR}/deploy/dev/docker-compose-frontend.yml.tpl"
+  local backend_compose="${RENDERED_DIR}/deploy/dev/docker-compose-backend.yml.tpl"
+
+  # Inject Node.js replicas
+  if [[ -f "${frontend_compose}" ]]; then
+    inject_nodejs_replicas "${frontend_compose}"
+  fi
+
+  # Inject backend service replicas
+  if [[ -f "${backend_compose}" ]]; then
+    inject_mysql_replicas "${backend_compose}"
+    inject_redis_replicas "${backend_compose}"
+    inject_php_app_replicas "${backend_compose}"
+    inject_php_workers_replicas "${backend_compose}"
+    inject_nginx_replicas "${backend_compose}"
+  fi
+
+  log_success "Replica configurations injected"
+}
+
+# Step 4: Generate runtime environment files
+generate_runtime_env_files() {
+  log_step 4 "Generating runtime environment files for services"
+
+  # Generate service-specific environment files
+  generate_nodejs_env
+  generate_mysql_env
+  generate_redis_env
+  generate_php_env
+  generate_nginx_env
+
+  log_success "Runtime environment files generated"
+}
+
+# Step 5: Generate application environment files
+generate_application_env_files() {
+  log_step 5 "Generating application environment files"
+
+  # Generate frontend application environment
+  generate_frontend_application_env
+
+  # Generate backend application environment
+  generate_backend_application_env
+
+  log_success "Application environment files generated"
+}
+
+# Step 6: Generate TLS certificates
+generate_tls_certificates() {
+  log_step 6 "Generating TLS certificates for services"
+
+  # Generate frontend certificates
+  generate_frontend_certificates
+
+  # Generate backend certificates
+  generate_backend_certificates
+}
+
+# Step 7: Distribute certificates to services
+distribute_certificates() {
+  log_step 7 "Distributing TLS certificates to service directories"
+
+  # Find all service certificate directories
+  local cert_services
+  mapfile -t cert_services < <(find "${CERTS_DIR}" -mindepth 2 -maxdepth 2 -type d)
+
+  for service_cert_dir in "${cert_services[@]}"; do
+    distribute_service_certificates "${service_cert_dir}"
+  done
+
+  log_success "TLS certificates distributed"
+}
+
+# Step 8: Render all templates
+render_all_templates() {
+  log_step 8 "Rendering all template files"
+
+  render_templates "${RENDERED_DIR}" "render"
+
+  log_success "All templates rendered"
+}
+
+# Generate frontend application environment file
+generate_frontend_application_env() {
+  log_info "Generating frontend application environment file"
+
+  local frontend_env="${PROJECT_ROOT}/frontend/.env"
+
+  cat > "${frontend_env}" <<EOF
+# Generated by ${SCRIPT_NAME} on $(date)
+# Frontend Application Environment
+
+VITE_APP_NAME="${APP_NAME}"
+VITE_APP_ENV=${INFRA_ENV}
+VITE_APP_URL=https://${FRONTEND_HOST_NAME}
+VITE_API_URL=https://${BACKEND_HOST_NAME}
+VITE_APP_TIMEZONE="${APP_TIMEZONE}"
+
+# Development configuration
+VITE_DEV_SERVER_HOST=0.0.0.0
+VITE_DEV_SERVER_PORT=${NODEJS_CONTAINER_PORT:-5173}
+VITE_PREVIEW_PORT=${NODEJS_VITE_PREVIEW_PORT:-3000}
+
+# Build configuration
+VITE_BUILD_TARGET=${INFRA_ENV}
+EOF
+
+  log_debug "Frontend environment written to: ${frontend_env}"
+}
+
+# Generate backend application environment file
+generate_backend_application_env() {
+  log_info "Generating backend application environment file"
+
+  local backend_env="${PROJECT_ROOT}/backend/.env"
+  local pusher_app_id="reverb-$(slugify "${BACKEND_HOST_NAME}")"
+
+  local app_debug="false"
+  local log_level="error"
+  local redis_allow_self_signed=0
+
+  if [[ "${INFRA_ENV}" == "dev" ]]; then
+    app_debug="true"
+    log_level="debug"
+    redis_allow_self_signed=1
+  fi
+
+  cat > "${backend_env}" <<EOF
+# Generated by ${SCRIPT_NAME} on $(date)
+# Backend Application Environment
+
+APP_NAME="${APP_NAME}"
+APP_ENV=${INFRA_ENV}
+APP_KEY=base64:$(openssl rand -base64 32)
+APP_DEBUG=${app_debug}
+APP_URL=https://${BACKEND_HOST_NAME}
+APP_TIMEZONE="${APP_TIMEZONE}"
+
+APP_LOCALE=en
+APP_FALLBACK_LOCALE=en
+APP_FAKER_LOCALE=en_US
+
+APP_MAINTENANCE_DRIVER=cache
+APP_MAINTENANCE_STORE=redis
+
+LOG_CHANNEL=stderr
+LOG_LEVEL=${log_level}
+
+PHP_CLI_SERVER_WORKERS=4
+BCRYPT_ROUNDS=12
+
+# Database Configuration
+DB_CONNECTION=mysql
+DB_PORT=${MYSQL_CONTAINER_PORT}
+DB_DATABASE=${MYSQL_DATABASE}
+DB_TLS_VERIFY_SERVER_CERT=true
+
+# Write Database (Master)
+DB_WRITE_HOST=${MYSQL_MASTER_HOST_NAME}
+DB_WRITE_USERNAME=${MYSQL_RW_USER_NAME}
+DB_WRITE_PASSWORD=${MYSQL_RW_USER_PASSWORD}
+DB_WRITE_TLS_CA=/etc/ssl/certs/mysql/${MYSQL_RW_USER_NAME}/ca.pem
+DB_WRITE_TLS_CERT=/etc/ssl/certs/mysql/${MYSQL_RW_USER_NAME}/leaf.pem
+DB_WRITE_TLS_KEY=/etc/ssl/certs/mysql/${MYSQL_RW_USER_NAME}/key.pem
+
+# Read Database (Replica)
+DB_READ_HOST=${MYSQL_REPLICA_HOST_NAME}
+DB_READ_USERNAME=${MYSQL_RO_USER_NAME}
+DB_READ_PASSWORD=${MYSQL_RO_USER_PASSWORD}
+DB_READ_TLS_CA=/etc/ssl/certs/mysql/${MYSQL_RO_USER_NAME}/ca.pem
+DB_READ_TLS_CERT=/etc/ssl/certs/mysql/${MYSQL_RO_USER_NAME}/leaf.pem
+DB_READ_TLS_KEY=/etc/ssl/certs/mysql/${MYSQL_RO_USER_NAME}/key.pem
+
+# Session Configuration
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_ENCRYPT=true
+SESSION_SAME_SITE=lax
+SESSION_PATH=/
+SESSION_DOMAIN=${BACKEND_HOST_NAME}
+
+# Broadcasting Configuration
+BROADCAST_CONNECTION=pusher
+PUSHER_APP_ID=${pusher_app_id}
+PUSHER_APP_KEY=$(openssl rand -hex 16)
+PUSHER_APP_SECRET=$(openssl rand -hex 32)
+PUSHER_HOST=reverb.${BACKEND_HOST_NAME}
+PUSHER_PORT=${PHP_LARAVEL_REVERB_CONTAINER_PORT}
+PUSHER_SCHEME=https
+PUSHER_USE_TLS=true
+
+# Cache Configuration
+CACHE_STORE=redis
+QUEUE_CONNECTION=redis
+
+# Redis Configuration
+REDIS_HOST=${REDIS_MASTER_HOST_NAME}
+REDIS_PORT=${REDIS_CONTAINER_PORT}
+REDIS_USERNAME=${REDIS_RW_USER_NAME}
+REDIS_PASSWORD=${REDIS_RW_USER_PASSWORD}
+REDIS_TLS_CERT=/etc/ssl/certs/redis/${REDIS_RW_USER_NAME}/leaf.pem
+REDIS_TLS_KEY=/etc/ssl/certs/redis/${REDIS_RW_USER_NAME}/key.pem
+REDIS_TLS_CA=/etc/ssl/certs/redis/${REDIS_RW_USER_NAME}/ca.pem
+REDIS_TLS_ALLOW_SELF_SIGNED=${redis_allow_self_signed}
+REDIS_TLS_PEER_NAME=*.$(get_domain "${BACKEND_HOST_NAME}")
+
+# Mail Configuration
+MAIL_MAILER=smtp
+MAIL_HOST=${MAIL_HOST}
+MAIL_PORT=${MAIL_PORT}
+MAIL_USERNAME=${MAIL_USERNAME}
+MAIL_PASSWORD=${MAIL_PASSWORD}
+MAIL_FROM_ADDRESS="${MAIL_FROM_ADDRESS}"
+MAIL_FROM_NAME="${MAIL_FROM_NAME}"
+
+# File Storage Configuration
+FILESYSTEM_DISK=s3
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+AWS_BUCKET=${AWS_BUCKET}
+AWS_ENDPOINT="${AWS_ENDPOINT}"
+AWS_USE_PATH_STYLE_ENDPOINT=${AWS_USE_PATH_STYLE_ENDPOINT}
+AWS_URL=${AWS_URL}
+EOF
+
+  log_debug "Backend environment written to: ${backend_env}"
+}
+
+# Main execution function
+main() {
+  # Initialize script
+  init_render_script
+
+  log_section "Starting Template Rendering Process"
+
+  # Execute rendering steps
+  prepare_rendered_directory
+  adjust_dockerfile_dependencies
+  inject_replica_configurations
+  generate_runtime_env_files
+  generate_application_env_files
+  generate_tls_certificates
+  distribute_certificates
+  render_all_templates
+}
+
+# Execute main function if script is run directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # Execute in subshell to prevent environment pollution
+  (
+  main "$@"
+  )
+  exit $?
+fi
