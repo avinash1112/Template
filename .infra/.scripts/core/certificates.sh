@@ -37,15 +37,18 @@ generate_service_tls_certs() {
   if [[ "${service_lc}" == "proxy" ]]; then
     if [[ "${stack}" == "frontend" ]]; then
       master_hosts="${FRONTEND_HOST_NAME}"
-      elif [[ "${stack}" == "backend" ]]; then
-        master_hosts="${BACKEND_HOST_NAME}"
-      fi
-      else
-      local master_var="${service_uc}_MASTER_HOST_NAME"
-      local replica_var="${service_uc}_REPLICA_HOST_NAME"
-      master_hosts="${!master_var:-}"
-      replica_hosts="${!replica_var:-}"
+    elif [[ "${stack}" == "backend" ]]; then
+      master_hosts="${BACKEND_HOST_NAME}"
     fi
+  elif [[ "${service_lc}" == "nodejs" ]]; then
+    # Node.js uses a simple hostname pattern
+    master_hosts="${NODEJS_HOST_NAME}"
+  else
+    local master_var="${service_uc}_MASTER_HOST_NAME"
+    local replica_var="${service_uc}_REPLICA_HOST_NAME"
+    master_hosts="${!master_var:-}"
+    replica_hosts="${!replica_var:-}"
+  fi
 
     # Certificate details
     local ca_cn="*.$(_get_domain)"
@@ -259,7 +262,7 @@ EOF
   generate_frontend_certificates() {
     log_info "Generating frontend TLS certificates"
     generate_service_tls_certs "frontend" "proxy" "health"
-    generate_service_tls_certs "frontend" "nodejs" "health"
+    generate_service_tls_certs "frontend" "nodejs" "nginx"
   }
 
   # Generate backend certificates

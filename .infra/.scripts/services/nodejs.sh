@@ -50,4 +50,62 @@ generate_nodejs_env() {
   log_debug "Node.js environment file generation completed"
 }
 
+# Inject Node.js replica configurations into Docker Compose
+inject_nodejs_replicas() {
+  local docker_compose_file="${1}"
+  local match_service="nodejs-0"
+  local inject_after=1
+  
+  log_info "Injecting Node.js replica configurations"
+  
+  if [[ ! -f "${docker_compose_file}" ]]; then
+    log_error "Docker Compose file not found: ${docker_compose_file}"
+    return 1
+  fi
+  
+  local all_replicas_block=""
+  
+  # Generate replica configurations
+  for i in $(seq 1 "${NODEJS_CONFIG_READ_REPLICA_COUNT}"); do
+    local replica_block=$(cat <<EOF
+nodejs-${i}:
+  container_name: ${REPO_NAME}-nodejs-${i}
+  hostname: nodejs-${i}
+  image: ghcr.io/${CONTAINER_REGISTRY_USERNAME}/${REPO_NAME}-nodejs:latest
+  restart: unless-stopped
+  env_file:
+    - ../../docker-images/frontend/nodejs/.env-runtime
+  expose:
+    - "${NODEJS_CONTAINER_PORT}"
+  volumes:
+    - type: bind
+      source: ../../../../frontend
+      target: /app
+    - type: volume
+      source: ${REPO_NAME}-node_modules
+      target: /app/node_modules
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/readiness.sh"]
+    start_period: 0s
+    timeout: 10s
+    interval: 5s
+    retries: 5
+  networks:
+    - ${REPO_NAME}-frontend-net
+    - ${REPO_NAME}-edge-net
+EOF
+    )
+        
+    all_replicas_block+="${replica_block}"$'\n\n'
+  done
+    
+  # Remove trailing newline
+  all_replicas_block="${all_replicas_block%$'\n'}"
+  
+  # Inject the block into the Docker Compose file
+  inject_service_block "${docker_compose_file}" "${match_service}" "${all_replicas_block}"
+  
+  log_debug "Injected ${NODEJS_CONFIG_READ_REPLICA_COUNT} Node.js replica configurations"
+}
+
 readonly NODEJS_SERVICE_LOADED=1

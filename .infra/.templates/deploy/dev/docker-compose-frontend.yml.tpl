@@ -17,7 +17,7 @@ services:
         target: /app/node_modules
     healthcheck:
       test: ["CMD", "/usr/local/bin/readiness.sh"]
-      start_period: 00s
+      start_period: 0s
       timeout: 10s
       interval: 5s
       retries: 5
