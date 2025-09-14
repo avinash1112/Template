@@ -325,6 +325,32 @@ snake_case() {
   echo "${result}"
 }
 
+# Convert string to kebab-case
+kebab_case() {
+  local input="${1}"
+  
+  # Convert camelCase to kebab-case
+  local result="${input}"
+  result="$(echo "${result}" | sed 's/\([a-z]\)\([A-Z]\)/\1-\2/g')"
+  
+  # Convert spaces, underscores, and dots to hyphens
+  result="${result// /-}"
+  result="${result//_/-}"
+  result="${result//./-}"
+  
+  # Convert to lowercase
+  result="${result,,}"
+  
+  # Remove multiple consecutive hyphens
+  result="$(echo "${result}" | sed 's/-\+/-/g')"
+  
+  # Remove leading/trailing hyphens
+  result="${result#-}"
+  result="${result%-}"
+  
+  echo "${result}"
+}
+
 # Escape string for use in sed
 escape_for_sed() {
   local input="${1}"

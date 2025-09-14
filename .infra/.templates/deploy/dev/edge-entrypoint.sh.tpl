@@ -27,12 +27,15 @@ _probe_url() {
       # Extract URL after @
       url="${item#*@}"
 
-      wget -q --spider --header="Host: ${host}" --timeout="${WAIT_RETRY_INTERVAL}" "${url}" 2>/dev/null
+      # wget -q --spider --header="Host: ${host}" --timeout="${WAIT_RETRY_INTERVAL}" "${url}" 2>/dev/null
+      wget -S -O- --header="Host: ${host}" --timeout="${WAIT_RETRY_INTERVAL}" "${url}" 2>&1 | head -20
+
     ;;
 
     # Default: just probe the raw URL
     *)
-      wget -q --spider --timeout="${WAIT_RETRY_INTERVAL}" "${item}" 2>/dev/null
+      # wget -q --spider --timeout="${WAIT_RETRY_INTERVAL}" "${item}" 2>/dev/null
+      wget -S -O- --timeout="${WAIT_RETRY_INTERVAL}" "${url}" 2>&1 | head -20
     ;;
 
   esac

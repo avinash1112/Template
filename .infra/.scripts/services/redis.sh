@@ -10,23 +10,16 @@ fi
 
 generate_redis_env() {
   log_info "Generating Redis runtime environment file"
-  local redis_env_dir="${RENDERED_DIR}/docker-images/backend/redis"
-  ensure_directory_exists "${redis_env_dir}"
-  local redis_env_file="${redis_env_dir}/.env-runtime"
-  cat > "${redis_env_file}" <<EOF
-INFRA_ENV=${INFRA_ENV}
-HOST_NAME=redis-0
-REDIS_RW_USER_NAME=${REDIS_RW_USER_NAME}
-REDIS_RW_USER_PASSWORD=${REDIS_RW_USER_PASSWORD}
-REDIS_CONTAINER_PORT=${REDIS_CONTAINER_PORT}
-EOF
-  log_debug "Redis environment file written to: ${redis_env_file}"
+  
+  generate_service_env_file "backend" "redis" "REDIS_MASTER_HOST_NAME"
+  
+  log_debug "Redis environment file generation completed"
 }
 
 inject_redis_replicas() {
   local docker_compose_file="${1}"
   log_info "Injecting Redis replica configurations"
-  # Implementation similar to MySQL but for Redis
+  # TODO Implementation similar to MySQL but for Redis
   log_debug "Redis replicas injected"
 }
 

@@ -16,49 +16,9 @@ fi
 generate_mysql_env() {
   log_info "Generating MySQL runtime environment file"
   
-  local mysql_env_dir="${RENDERED_DIR}/docker-images/backend/mysql"
-  ensure_directory_exists "${mysql_env_dir}"
+  generate_service_env_file "backend" "mysql" "MYSQL_MASTER_HOST_NAME"
   
-  local mysql_env_file="${mysql_env_dir}/.env-runtime"
-  
-  cat > "${mysql_env_file}" <<EOF
-# Generated MySQL runtime environment
-INFRA_ENV=${INFRA_ENV}
-HOST_NAME=mysql-0
-
-# Database configuration
-MYSQL_DATABASE=${MYSQL_DATABASE}
-MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-
-# Super user (for replication setup)
-MYSQL_SUPER_USER_NAME=${MYSQL_SUPER_USER_NAME}
-MYSQL_SUPER_USER_PASSWORD=${MYSQL_SUPER_USER_PASSWORD}
-
-# Read-write user
-MYSQL_RW_USER_NAME=${MYSQL_RW_USER_NAME}
-MYSQL_RW_USER_PASSWORD=${MYSQL_RW_USER_PASSWORD}
-
-# Read-only user
-MYSQL_RO_USER_NAME=${MYSQL_RO_USER_NAME}
-MYSQL_RO_USER_PASSWORD=${MYSQL_RO_USER_PASSWORD}
-
-# Container runtime configuration
-MYSQL_CONTAINER_RUNTIME_USER_NAME=${MYSQL_CONTAINER_RUNTIME_USER_NAME}
-MYSQL_CONTAINER_RUNTIME_USER_GROUP=${MYSQL_CONTAINER_RUNTIME_USER_GROUP}
-MYSQL_CONTAINER_USER_UID=${MYSQL_CONTAINER_USER_UID}
-MYSQL_CONTAINER_USER_GID=${MYSQL_CONTAINER_USER_GID}
-
-# Port configuration
-MYSQL_CONTAINER_PORT=${MYSQL_CONTAINER_PORT}
-MYSQL_HOST_PORT=${MYSQL_HOST_PORT}
-
-# Replica configuration
-MYSQL_CONFIG_READ_REPLICA_COUNT=${MYSQL_CONFIG_READ_REPLICA_COUNT}
-MYSQL_MASTER_HOST_NAME=${MYSQL_MASTER_HOST_NAME}
-MYSQL_REPLICA_HOST_NAME=${MYSQL_REPLICA_HOST_NAME}
-EOF
-    
-  log_debug "MySQL environment file written to: ${mysql_env_file}"
+  log_debug "MySQL environment file generation completed"
 }
 
 # Inject MySQL replica configurations into Docker Compose
@@ -79,40 +39,39 @@ inject_mysql_replicas() {
   
   # Generate replica configurations
   for i in $(seq 1 "${MYSQL_CONFIG_READ_REPLICA_COUNT}"); do
-    local container_port=$((MYSQL_CONTAINER_PORT + i))
     local host_port=$((MYSQL_HOST_PORT + i))
     local server_id=$((base_server_id + i))
     
     local replica_block=$(cat <<EOF
-  mysql-${i}:
-    container_name: \${REPO_NAME}-mysql-${i}
-    hostname: mysql-${i}
-    image: ghcr.io/\${CONTAINER_REGISTRY_USERNAME}/\${REPO_NAME}-mysql:latest
-    restart: unless-stopped
-    environment:
-      INFRA_ENV: \${INFRA_ENV}
-      HOST_NAME: mysql-${i}
-      INSTANCE_SERVER_ID: ${server_id}
-      MASTER_HOST_NAME: \${MYSQL_MASTER_HOST_NAME}
-    env_file:
-      - ../../docker-images/backend/mysql/.env-runtime
-    ports:
-      - "${host_port}:${container_port}"
-    volumes:
-      - type: bind
-        source: ../../../certs/backend/mysql/clients
-        target: /etc/ssl/certs/mysql/clients
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/readiness.sh"]
-      start_period: 0s
-      timeout: 90s
-      interval: 5s
-      retries: 5
-    networks:
-      - \${REPO_NAME}-backend-net
-    depends_on:
-      ${match_service}:
-        condition: service_healthy
+mysql-${i}:
+  container_name: ${REPO_NAME}-mysql-${i}
+  hostname: mysql-${i}
+  image: ghcr.io/${CONTAINER_REGISTRY_USERNAME}/${REPO_NAME}-mysql:latest
+  restart: unless-stopped
+  environment:
+    INFRA_ENV: ${INFRA_ENV}
+    HOST_NAME: mysql-${i}
+    INSTANCE_SERVER_ID: ${server_id}
+    MASTER_HOST_NAME: ${MYSQL_MASTER_HOST_NAME}
+  env_file:
+    - ../../docker-images/backend/mysql/.env-runtime
+  ports:
+    - "${host_port}:${MYSQL_CONTAINER_PORT}"
+  volumes:
+    - type: bind
+      source: ../../../certs/backend/mysql/clients
+      target: /etc/ssl/certs/mysql/clients
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/readiness.sh"]
+    start_period: 0s
+    timeout: 90s
+    interval: 5s
+    retries: 5
+  networks:
+    - ${REPO_NAME}-backend-net
+  depends_on:
+    ${match_service}:
+      condition: service_healthy
 EOF
     )
         

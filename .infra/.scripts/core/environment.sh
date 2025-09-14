@@ -365,6 +365,77 @@ validate_environment() {
     log_debug "Environment cleanup completed"
   }
 
+  # Generate dynamic service environment file
+  # Usage: generate_service_env_file <stack> <service_name> [exception_keys...]
+  generate_service_env_file() {
+    local stack="${1}"
+    local service_name="${2}"
+    shift 2
+    local -a exception_keys=("${@:-}")
+
+    log_debug "Generating ${service_name} runtime environment file"
+
+    # Generate service prefix (e.g., MYSQL_, NODEJS_, REDIS_)
+    local prefix
+    prefix="$(echo "${service_name}" | tr '[:lower:]' '[:upper:]')_"
+
+    # Define paths
+    local service_env_dir="${RENDERED_DIR}/docker-images/${stack}/${service_name}"
+    local output_file="${service_env_dir}/.env-runtime"
+    local source_file="${INFRA_ENV_FILE}"
+
+    # Ensure directory exists and create empty file
+    ensure_directory_exists "${service_env_dir}"
+    : > "${output_file}"
+
+    # Track handled exception keys
+    declare -A handled_exceptions=()
+
+    # Process environment file line by line
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+      # Skip empty lines and comments
+      [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+
+      # Trim whitespace
+      key="$(echo "$key" | xargs)"
+      value="$(echo "$value" | xargs)"
+
+      # Include variables with service prefix that are NOT ${PREFIX}CONFIG_*
+      if [[ "$key" == "${prefix}"* && "$key" != "${prefix}CONFIG_"* ]]; then
+        echo "${key}=${value}" >> "${output_file}"
+        continue
+      fi
+
+      # Handle exception keys (additional variables to include)
+      for ex_key in "${exception_keys[@]}"; do
+        if [[ "$key" == "$ex_key" ]]; then
+          echo "${key}=${value}" >> "${output_file}"
+          handled_exceptions["$key"]=1
+          break
+        fi
+      done
+    done < "$source_file"
+
+    # Handle unprocessed exception keys (fallback to shell environment)
+    if [[ "${#exception_keys[@]}" -gt 0 ]]; then
+      for ex_key in "${exception_keys[@]}"; do
+        [[ -z "$ex_key" ]] && continue  # Skip empty keys
+
+        # If not handled from file, try shell environment
+        if [[ -z "${handled_exceptions[$ex_key]+_}" ]]; then
+          if [[ -n "${!ex_key:-}" ]]; then
+            echo "${ex_key}=${!ex_key}" >> "${output_file}"
+            log_debug "Added ${ex_key} from shell environment"
+          else
+            log_warn "Required exception key '${ex_key}' not found in env file or shell environment"
+          fi
+        fi
+      done
+    fi
+
+    log_debug "${service_name} runtime env file generated: ${output_file}"
+  }
+
   # Trap function to ensure cleanup on script exit
   setup_environment_cleanup_trap() {
     # Only set trap if we're not in a subshell already

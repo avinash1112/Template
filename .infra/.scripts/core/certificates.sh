@@ -259,6 +259,7 @@ EOF
   generate_frontend_certificates() {
     log_info "Generating frontend TLS certificates"
     generate_service_tls_certs "frontend" "proxy" "health"
+    generate_service_tls_certs "frontend" "nodejs" "health"
   }
 
   # Generate backend certificates

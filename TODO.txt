@@ -1,0 +1,130 @@
+FINAL TOUCH UP
+- add prometheus
+- Add a prerequisite for the server configurations - maybe a separate README.md file on how homeserver was configured
+- use README file to try to deploy (as if a student was trying it)
+- create a README file
+
+- make bash .infra/.scripts better in terms of UI: mirror laravel project start and artisan commands
+
+- create CI/CD pipeline with tests, github workflows, github actions, etc..
+
+- test full deployment with another company name with subdomain, look for any mywirelessworld trace and fix (in case hardcoded values)
+- test full deployment with another company name without subdomain, look for any mywirelessworld trace and fix (in case hardcoded values)
+- test full deployment without subdomain (mywirelessworld.ca instead of staff.mywirelessworld.ca)
+
+- review .gitignore & .dockerignore files
+- make sure ./.build/.env-build and ./.build/.env-build-example matches
+
+
+
+K8S
+- review ./scripts: prod env variables parsing for 01-render-files & 03-deploy-staging/prod
+- review sentinel behaviour in prod and deploy a cronjob for promotion if needed
+
+- set up a cronjob sort of thing that check if a restore was performed on master, then trigger a re-config on replicas automatically
+- set up cronjob for mysql restore (should handle alongside mysql promoter etc... review full docker setup as there are a lot of case scenarios)
+- set up cronjob for mysql backup
+- review mysql promoter cronjob
+
+- review scripts to apply manifests conditionally based on backend and frontend choices
+- remove any missed env var when running 01-render-files
+- check for any hardcoded values in .templates/k8s/* => create dynamic vars where it makes sense
+
+- review sequence of deploying (like in docker-compose we have depends_on healthy in k8s should be something like marked as COMPLETED at least 1/1 - not just RUNNING state)
+- nodejs pod's life is independent of other pods since frontend & backend are decoupled
+- review pods states so that if their dependant dies and no available re-spawns, they die too (waterfall effect on dependencies)
+- review probes for all deployments/statefulsets
+
+- add nodejs deployment/statefulset
+- review nginx deployment (see if should be changed to statefulset because of replicas)
+- add php-workers deployment/statefulset
+- review php-app deployment (see if should be changed to statefulset because of replicas)
+- add redis statefulset (because of replica - follow same pattern as mysql)
+- review mysql statefulset
+
+- review docker volume mounts and create secrets/configMap/PVC as needed
+- shared volume only needed for dev (follow docker-compose override. For prod, the files are baked into the image)
+
+- add ttlSecondsAfterFinished to all pods 
+- remove unnecessary meta data in manifests
+- review all files and remove unnecessary config that are now set in the docker images
+- fix 03-deploy/* to follow best convention (variables to lower, {}, local keyword, subshell)
+
+
+
+FIXES
+- review scripts to apply dockerfiles, templates rendering, ssl certs, etc.. conditionally based on backend choice
+- introduce tests for nodejs backend
+
+- once config finalized, move both php backend & nodejs backend to a folder under .templates and based on user choice that folder gets copied into /backend
+- do a full backend for nodejs (replacing the php app and php workers containers)
+- add option for backend to use either php or nodejs (still decoupled frontend)
+
+- review scripts to apply dockerfiles, templates rendering, ssl certs, etc.. conditionally based on frontend choice
+- once config finalized, move both Vue & React to a folder under .templates and based on user choice that folder gets copied into /frontend
+- develop UI in React
+- add option for frontend to use either Vue or React
+
+- introduce tests for services in a dedicated view
+  - send a write to mysql master to create table, insert, update, delete data & fails create a new db
+  - read user create, insert, update, delete should fail
+  - read user select should pass
+  - something for redis write
+  - something for redis read
+  - something for php-app
+  - something for php-workers
+  - something for nginx
+  - something for nodejs frontend
+
+- make better UI: mirror test_app
+  BG COLOR: #030712f2
+  FORM BG COLOR: #111827cc
+  BORDER COLOR: rgb(31 41 55 / 1)
+  box shadow: 0 0 0 0px #fff, 0 0 0 1px rgb(31 41 55 / 1), 0 20px 25px -5px rgb(0 0 0 / .1), 0 8px 10px -6px rgb(0 0 0 / .1)
+
+- review UID and GID changes in dockerfiles (currently commented out)
+- review docker-compose file depends_on and make all services dynamic with a replica hostname of of the dependant
+- update docker-compose file with proxy depends on nginx replica count
+
+- update readiness checks for nginx to wait for custom initialization to finish, then run checks and only then is considered ready
+- review liveness and readiness for nginx (conditional if replica do this if master do that)
+- check if worth adding replicas for nginx
+
+- update liveness/readiness checks for php-workers to wait for custom initialization to finish, then run checks and only then is considered ready (conditional if replica do this if master do that)
+- update liveness/readiness checks for php-app to wait for custom initialization to finish, then run checks and only then is considered ready (conditional if replica do this if master do that)
+- update docker-compose file with nginx depends on php-workers replica count
+- update docker-compose file with php-workers depends on php-app replica count
+- add replicas for php-workers
+- add replicas for php-app
+
+- update view with an email sending test
+- move php workers tasks to workers pods
+- add php workers container
+
+- update script through env files to apply pvcs and pvs yml based on selected storage source
+- configure laravel local storage with longhorn in prod
+- configure laravel to use local storage or cloudflare r2 conditionally (apply config/filesystems.php code appropriately based on choice of storage)
+- add a dynamic configuration for S3 (cloudflare R2)
+
+- get rid of Reading from client: error:00000000:lib(0)::reason(0)
+- test redis write and read pods using view
+- scaffold a Laravel helper class or middleware for redis read write behavior.
+- update readiness checks for redis to wait for custom initialization to finish, then run checks and only then is considered ready
+- review liveness & readiness for redis
+- update docker-compose file with php-app depends on redis replica count
+- add replicas for redis
+- make sure redis is using TLS over TCP instead of socket
+
+- test mysql write and read pods
+- scaffold a Laravel helper class or middleware for safe read-after-write behavior.
+- move test_app to frontend test nodejs
+- test cors, etc (no auth since this is a blank project, should be as broad as possible so can be used as a template)
+- make some api calls from frontend and test functionality
+- configure CORS in laravel for frontend
+- make laravel full api mode
+- remove all frontend stuffs from laravel
+
+- update docker-compose file with proxy depends on nodejs replica count
+- update nodejs liveness & readiness checks for nodejs to wait for custom initialization to finish, then run checks and only then is considered ready
+- update nodejs entrypoint
+- add replicas for nodejs
