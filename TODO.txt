@@ -48,7 +48,6 @@ K8S
 - add ttlSecondsAfterFinished to all pods 
 - remove unnecessary meta data in manifests
 - review all files and remove unnecessary config that are now set in the docker images
-- fix 03-deploy/* to follow best convention (variables to lower, {}, local keyword, subshell)
 
 
 
@@ -83,48 +82,61 @@ FIXES
   box shadow: 0 0 0 0px #fff, 0 0 0 1px rgb(31 41 55 / 1), 0 20px 25px -5px rgb(0 0 0 / .1), 0 8px 10px -6px rgb(0 0 0 / .1)
 
 - review UID and GID changes in dockerfiles (currently commented out)
-- review docker-compose file depends_on and make all services dynamic with a replica hostname of of the dependant
-- update docker-compose file with proxy depends on nginx replica count
-
-- update readiness checks for nginx to wait for custom initialization to finish, then run checks and only then is considered ready
-- review liveness and readiness for nginx (conditional if replica do this if master do that)
-- check if worth adding replicas for nginx
-
-- update liveness/readiness checks for php-workers to wait for custom initialization to finish, then run checks and only then is considered ready (conditional if replica do this if master do that)
-- update liveness/readiness checks for php-app to wait for custom initialization to finish, then run checks and only then is considered ready (conditional if replica do this if master do that)
+- review healthchecks timers so app can start faster
+- update docker-compose file with proxy depends on nginx replica count & nodejs replica count
 - update docker-compose file with nginx depends on php-workers replica count
 - update docker-compose file with php-workers depends on php-app replica count
-- add replicas for php-workers
-- add replicas for php-app
-
-- update view with an email sending test
-- move php workers tasks to workers pods
-- add php workers container
+- update docker-compose file with php-app depends on mysql replica count & redis replica count
 
 - update script through env files to apply pvcs and pvs yml based on selected storage source
 - configure laravel local storage with longhorn in prod
 - configure laravel to use local storage or cloudflare r2 conditionally (apply config/filesystems.php code appropriately based on choice of storage)
 - add a dynamic configuration for S3 (cloudflare R2)
 
-- get rid of Reading from client: error:00000000:lib(0)::reason(0)
 - test redis write and read pods using view
 - scaffold a Laravel helper class or middleware for redis read write behavior.
-- update readiness checks for redis to wait for custom initialization to finish, then run checks and only then is considered ready
-- review liveness & readiness for redis
-- update docker-compose file with php-app depends on redis replica count
-- add replicas for redis
-- make sure redis is using TLS over TCP instead of socket
-
 - test mysql write and read pods
-- scaffold a Laravel helper class or middleware for safe read-after-write behavior.
-- move test_app to frontend test nodejs
+- scaffold a Laravel helper class or middleware for safe mysql read-after-write behavior.
+- update view with an email sending test
+- move php workers tasks to workers pods
+
+- move test_app to frontend test nodejs (UI sort of thing to view all pods and run some test on master/slave, load balancing, etc...)
 - test cors, etc (no auth since this is a blank project, should be as broad as possible so can be used as a template)
 - make some api calls from frontend and test functionality
 - configure CORS in laravel for frontend
 - make laravel full api mode
 - remove all frontend stuffs from laravel
 
+- update readiness checks for nginx to wait for custom initialization to finish, then run checks and only then is considered ready
+- review liveness and readiness for nginx
+- add replicas for nginx
+- use includes for nginx.conf
+- review nginx setup to follow best practice and any enhancements
+
+- update readiness checks for php-workers to wait for custom initialization to finish, then run checks and only then is considered ready
+- update readiness checks for php-app to wait for custom initialization to finish, then run checks and only then is considered ready
+- add replicas for php-workers
+- add replicas for php-app
+- add php workers container will all entrypoint/init logic and artisan queue:work command
+- review php setup to follow best practice and any enhancements
+
+- update readiness checks for redis to wait for custom initialization to finish, then run checks and only then is considered ready
+- review liveness & readiness for redis
+- update docker-compose file with php-app depends on redis replica count
+- add replicas for redis (possibly using sentinel for better coordination)
+- get rid of Reading from client: error:00000000:lib(0)::reason(0)
+- make sure redis is using TLS over TCP instead of socket
+- review redis setup to follow best practice and any enhancements
+
+- review backup/restore logic and adjust if needed
+- review initialization logic so if a master dies and a replica is promoted if the current setup will work
+- review replica coordination if will work in prod. Adjust if needed - don't rely on ordinals
+- review mysql setup to follow best practice and any enhancements
+
 - update docker-compose file with proxy depends on nodejs replica count
 - update nodejs liveness & readiness checks for nodejs to wait for custom initialization to finish, then run checks and only then is considered ready
 - update nodejs entrypoint
 - add replicas for nodejs
+
+- remove chmod/chown of certs in dockerfile and add in entrypoint instead
+- review best practice for mounting even server certs so its not backed in the image 
